@@ -145,6 +145,12 @@ class FourLeptonAnalyzer(Analyzer):
         
         #create the ZZ
         box.ZZ = DiObject(box.Z1,box.Z2)
+
+        # compute 5 angles [costhetastar, costheta1, costheta2, Phi, Phi1]
+        angles = computeAngles(box.ZZ.l1.l1, box.ZZ.l1.l2, box.ZZ.l2.l1, box.ZZ.l2.l2)
+        box.costhetastar = angles[0]
+        box.costheta1 = angles[1]
+        box.costheta2 = angles[2]
         
         return True
 
@@ -158,6 +164,11 @@ class FourLeptonAnalyzer(Analyzer):
         self.declareHisto('massZ1',20,12,120,"m_{Z1} [GeV]")
         self.declareHisto('massZ2',20,4,74,"m_{Z2} [GeV]")
 
+        # anlges
+        self.declareHisto('costhetastar',20,-1,+1,"cos(#theta^{*})")
+        self.declareHisto('costheta1',20,-1,+1,"cos(#theta_{1})")
+        self.declareHisto('costheta2',20,-1,+1,"cos(#theta_{2})")
+
 
     def fillHistos(self,box,sample,weight = 1):
         super(FourLeptonAnalyzer,self).fillHistos(box,sample,weight)
@@ -167,6 +178,79 @@ class FourLeptonAnalyzer(Analyzer):
         self.fillHisto('massZ1',sample,box.ZZ.l1.mass(),weight)        
         self.fillHisto('massZ2',sample,box.ZZ.l2.mass(),weight)        
 
+        # anlges
+        self.fillHisto('costhetastar',sample,box.costhetastar,weight)
+        self.fillHisto('costheta1',sample,box.costheta1,weight)
+        self.fillHisto('costheta2',sample,box.costheta2,weight)
+
+
+
+# compute 5 angles for given 4 leptons, according to http://arxiv.org/pdf/1208.4018v2.pdf
+def computeAngles(l11, l12, l21, l22):
+                
+    # get p4 for Z1 and Z2
+    p4M11 = ROOT.TLorentzVector(l11.px(), l11.py(), l11.pz(), l11.energy())
+    p4M12 = ROOT.TLorentzVector(l12.px(), l12.py(), l12.pz(), l12.energy())
+    p4M21 = ROOT.TLorentzVector(l21.px(), l21.py(), l21.pz(), l21.energy())
+    p4M22 = ROOT.TLorentzVector(l22.px(), l22.py(), l22.pz(), l22.energy())
+
+    # for OS pairs: lep1 must be the negative one; for SS pairs: use random deterministic convention
+    if ((l11.pdgId()*l12.pdgId() < 0 and l11.pdgId()<0) or (l11.pdgId()*l12.pdgId() > 0 and l11.phi()<l12.phi())):
+	p4M11, p4M12 = p4M12, p4M11
+    if ((l21.pdgId()*l22.pdgId() < 0 and l21.pdgId()<0) or (l21.pdgId()*l22.pdgId() > 0 and l21.phi()<l22.phi())):
+        p4M21, p4M22 = p4M22, p4M21
+
+    # get p4 for Z1 and Z2
+    p4Z1 = p4M11 + p4M12
+    p4Z2 = p4M21 + p4M22
+
+    ### computation of cos(thetaStar) ###
+    # prepare p4 for H, use it to boost p4Z1 and p4Z2
+    p4H = p4Z1 + p4Z2
+    boostX = -(p4H.BoostVector())
+    thep4Z1inXFrame = p4Z1
+    thep4Z2inXFrame = p4Z2
+    thep4Z1inXFrame.Boost( boostX )
+    thep4Z2inXFrame.Boost( boostX )
+
+    # compute cos(thetaStar) from p3 vectors of Z1 and Z2 in X ref. frame
+    theZ1X_p3 = ROOT.TVector3( thep4Z1inXFrame.X(), thep4Z1inXFrame.Y(), thep4Z1inXFrame.Z() )
+    theZ2X_p3 = ROOT.TVector3( thep4Z2inXFrame.X(), thep4Z2inXFrame.Y(), thep4Z2inXFrame.Z() )
+    costhetastar = theZ1X_p3.CosTheta()
+
+    ### computation of cos(theta1) ###
+    # boost lep. p4 to the Z1 ref. frame
+    boostV1 = -(p4Z1.BoostVector())
+    p4M11_BV1 = p4M11
+    p4M21_BV1 = p4M21
+    p4M22_BV1 = p4M22
+    p4M11_BV1.Boost( boostV1 )
+    p4M21_BV1.Boost( boostV1 )
+    p4M22_BV1.Boost( boostV1 )
+
+    # compute cos(theta1) from q11 and q2 in Z1 ref. frame 
+    q11 = p4M11_BV1.Vect()
+    q2 = (p4M21_BV1 + p4M22_BV1).Vect()
+    costheta1 = (-1)*( q2.Dot( q11 ) )/( q2.Mag() * q11.Mag() );
+
+    ### computation of cos(theta2) ###
+    # boost lep. p4 to the Z2 ref. frame
+    boostV2 = -(p4Z2.BoostVector());
+    p4M11_BV2 = p4M11
+    p4M21_BV2 = p4M21
+    p4M12_BV2 = p4M12
+    p4M11_BV2.Boost( boostV2 )
+    p4M21_BV2.Boost( boostV2 )
+    p4M12_BV2.Boost( boostV2 )
+
+    # compute cos(theta2) from q21 and q1 in Z2 ref. frame
+    q21 = p4M21_BV2.Vect()
+    q1 = (p4M11_BV2 + p4M12_BV2).Vect()
+    costheta2 = (-1)*( q1.Dot( q21 ) )/( q1.Mag() * q21.Mag() );
+
+    # return list of angles [costhetastar, costheta1, costheta2, Phi, Phi1]
+    angles = [costhetastar, costheta1, costheta2, 0, 0]
+    return angles
 
 
         
